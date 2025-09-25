@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cloud Digital Library</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #f8fafc; margin:0; }
+    .header {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: white; padding: 20px 40px;
+      display: flex; justify-content: space-between; align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .search-container {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      padding: 0 40px;
+    }
+    .search-container input, .search-container select {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    .books { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+      gap: 25px; 
+      padding: 20px 30px 30px;
+    }
+    .book { 
+      background: white; 
+      border-radius: 12px; 
+      overflow: hidden; 
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08); 
+      transition: transform 0.2s ease;
+    }
+    .book:hover { transform: translateY(-5px); }
+    .book img { width: 100%; height: 180px; object-fit: cover; }
+    .book-content { padding: 15px; }
+    .book h3 { margin: 10px 0 5px; font-size: 1.15rem; }
+    .btn { 
+      padding: 8px 16px; 
+      border: none; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      font-weight: 600; 
+      margin-top: 8px; 
+    }
+    .btn-login { background: #3b82f6; color: white; }
+    .btn-download { background: #10b981; color: white; }
+    .btn-buy { background: #8b5cf6; color: white; }
+    .btn-logout { background: #ef4444; color: white; }
+    .token-badge { 
+      background: #10b981; 
+      padding: 4px 12px; 
+      border-radius: 20px; 
+      margin-left: 12px; 
+    }
+    /* Modal */
+    .modal { 
+      display: none; 
+      position: fixed; 
+      top:0; left:0; 
+      width:100%; height:100%; 
+      background:rgba(0,0,0,0.5); 
+      justify-content:center; 
+      align-items:center; 
+    }
+    .modal-content { 
+      background: white; 
+      padding: 25px; 
+      border-radius: 12px; 
+      width: 350px; 
+    }
+    .modal-content input { 
+      width: 100%; 
+      padding: 10px; 
+      margin: 8px 0; 
+      border: 1px solid #ddd; 
+      border-radius: 6px; 
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>📚 Cloud Digital Library</h2>
+    <div id="userPanel">
+      <button class="btn btn-login" onclick="showAuth()">Login</button>
+    </div>
+  </div>
+
+  <!-- 🔒 SEARCH & FILTER (Hidden by default) -->
+  <div id="searchContainer" style="display:none;">
+    <div class="search-container">
+      <input type="text" id="searchInput" placeholder="Search books by title or author..." oninput="filterBooks()">
+      <select id="genreFilter" onchange="filterBooks()">
+        <option value="">All Genres</option>
+        <option value="Fiction">Fiction</option>
+        <option value="Non-Fiction">Non-Fiction</option>
+        <option value="Fantasy">Fantasy</option>
+        <option value="Romance">Romance</option>
+        <option value="Thriller">Thriller</option>
+        <option value="Mystery">Mystery</option>
+        <option value="History">History</option>
+        <option value="Biography">Biography</option>
+        <option value="Sci-Fi">Sci-Fi</option>
+        <option value="Self-Help">Self-Help</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="books" id="bookGrid">Loading books...</div>
+  
+  <!-- Auth Modal -->
+  <div class="modal" id="authModal">
+    <div class="modal-content">
+      <h3 id="authTitle">Login</h3>
+      <input type="text" id="username" placeholder="Username (min 3 chars)" />
+      <input type="password" id="password" placeholder="Password (min 6 chars)" />
+      <button class="btn btn-login" onclick="handleAuth()"><span id="authBtnText">Login</span></button>
+      <button style="margin-top:10px" onclick="toggleMode()">Switch to <span id="modeText">Register</span></button>
+      <button style="margin-top:10px; background:#ccc" onclick="hideAuth()">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    let isLogin = true;
+    const API = 'http://localhost:5000/api';
+    let allBooks = [];
+
+    // Auth
+    function showAuth() { document.getElementById('authModal').style.display = 'flex'; }
+    function hideAuth() { document.getElementById('authModal').style.display = 'none'; }
+    function toggleMode() {
+      isLogin = !isLogin;
+      document.getElementById('authTitle').textContent = isLogin ? 'Login' : 'Register';
+      document.getElementById('authBtnText').textContent = isLogin ? 'Login' : 'Register';
+      document.getElementById('modeText').textContent = isLogin ? 'Register' : 'Login';
+    }
+
+    async function handleAuth() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      if (!username || !password || username.length < 3 || password.length < 6) {
+        alert('Invalid input');
+        return;
+      }
+      const res = await fetch(`${API}/${isLogin ? 'login' : 'register'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (isLogin) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('username', data.username);
+          localStorage.setItem('tokens', data.tokens);
+          updateUI();
+          loadBooks();
+          hideAuth();
+        } else {
+          alert('✅ Registered! Please login.');
+          toggleMode();
+        }
+      } else {
+        alert('❌ ' + data.msg);
+      }
+    }
+
+    // Books
+    async function loadBooks() {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        document.getElementById('bookGrid').innerHTML = '<p>🔑 Please login to view books.</p>';
+        return;
+      }
+      const res = await fetch(`${API}/books`, { headers: { Authorization: token } });
+      const books = await res.json();
+      allBooks = books;
+      renderBooks(books);
+    }
+
+    function renderBooks(books) {
+      if (books.length === 0) {
+        document.getElementById('bookGrid').innerHTML = '<p>No books match your search.</p>';
+        return;
+      }
+      
+      document.getElementById('bookGrid').innerHTML = books.map(book => `
+        <div class="book">
+          <img src="${book.coverImage}" alt="${book.title}" />
+          <div class="book-content">
+            <h3>${book.title}</h3>
+            <p><b>${book.author}</b> • ${book.genre}</p>
+            <p>${book.previewContent}</p>
+            ${book.isPremium 
+              ? `<button class="btn btn-download" onclick="downloadBook('${book._id}')">⬇ Download (20 Tokens)</button>`
+              : `<button class="btn" disabled>Preview Only</button>`}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function filterBooks() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      const genreFilter = document.getElementById('genreFilter').value;
+      
+      const filtered = allBooks.filter(book => {
+        const matchesSearch = 
+          book.title.toLowerCase().includes(searchTerm) || 
+          book.author.toLowerCase().includes(searchTerm);
+        const matchesGenre = genreFilter ? book.genre === genreFilter : true;
+        return matchesSearch && matchesGenre;
+      });
+      
+      renderBooks(filtered);
+    }
+
+    // PDF Download
+    async function downloadBook(id) {
+      const token = localStorage.getItem("token");
+      if(!token){ 
+        showAuth(); 
+        return; 
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", `${API}/books/${id}/pdf`, true);
+      xhr.setRequestHeader("Authorization", token);
+      xhr.responseType = "blob";
+
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          // Get book title for filename
+          const book = allBooks.find(b => b._id === id);
+          const title = book ? book.title : "Book";
+          const safeTitle = title.replace(/[/\\?%*:|"<>]/g, '_');
+          const filename = `${safeTitle}.pdf`;
+
+          const url = window.URL.createObjectURL(xhr.response);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+
+          // Update tokens locally
+          let tokens = parseInt(localStorage.getItem("tokens")) || 0;
+          tokens -= 20;
+          localStorage.setItem("tokens", tokens);
+          updateUI();
+          alert(`✅ Downloaded: ${filename}\nRemaining Tokens: ${tokens}`);
+        } else {
+          alert("❌ Download failed. Check console for details.");
+        }
+      };
+
+      xhr.onerror = function() {
+        alert("❌ Network error. Please ensure backend is running.");
+      };
+
+      xhr.send();
+    }
+
+    // User
+    function updateUI() {
+      const user = localStorage.getItem('username');
+      const tokens = localStorage.getItem('tokens') || 0;
+      const panel = document.getElementById('userPanel');
+      const searchContainer = document.getElementById('searchContainer');
+      
+      if (user) {
+        panel.innerHTML = `
+          👋 ${user} <span class="token-badge">🎟 ${tokens} Tokens</span>
+          <button class="btn btn-buy" onclick="buyTokens()">Buy 100 Tokens</button>
+          <button class="btn btn-logout" onclick="logout()">Logout</button>
+        `;
+        searchContainer.style.display = 'block'; // Show search after login
+        loadBooks();
+      } else {
+        panel.innerHTML = `<button class="btn btn-login" onclick="showAuth()">Login</button>`;
+        searchContainer.style.display = 'none'; // Hide search when logged out
+        document.getElementById('bookGrid').innerHTML = '<p>🔑 Please login to access the library.</p>';
+      }
+    }
+
+    async function buyTokens() {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        showAuth();
+        return;
+      }
+      const res = await fetch(`${API}/buy-tokens`, {
+        method: 'POST',
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('tokens', data.tokens);
+        updateUI();
+        alert('✅ 100 tokens added!');
+      } else {
+        const error = await res.json();
+        alert('❌ ' + error.msg);
+      }
+    }
+
+    function logout() {
+      localStorage.clear();
+      updateUI();
+    }
+
+    // Init
+    updateUI();
+  </script>
+</body>
+</html>
