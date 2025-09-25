@@ -1053,7 +1053,7 @@ app.post("/api/buy-tokens", authMiddleware, async (req, res) => {
 
 // Serve frontend HTML file
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "frontend.html"));
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // ✅ Start server AFTER defining all routes
@@ -1062,3 +1062,4 @@ seedBooks().then(() => {
     console.log(`🚀 Server running on http://localhost:${PORT}`)
   );
 });
+
